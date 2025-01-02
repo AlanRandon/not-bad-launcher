@@ -10,7 +10,13 @@ use image::{EncodableLayout, RgbaImage};
 use kitty_image as ki;
 use nucleo::Nucleo;
 use ropey::RopeSlice;
-use std::{io, iter, num::NonZeroU32, os::unix::process::CommandExt, sync::Arc};
+use std::{
+    io::{self, Write},
+    iter,
+    num::NonZeroU32,
+    os::unix::{ffi::OsStrExt, process::CommandExt},
+    sync::Arc,
+};
 
 struct DesktopEntry<'a> {
     entry: fdde::DesktopEntry<'a>,
@@ -558,8 +564,19 @@ impl Ui {
     }
 }
 
+pub fn command_to_string(command: &std::process::Command) -> std::ffi::OsString {
+    let mut result: std::ffi::OsString = command.get_program().into();
+    for arg in command.get_args() {
+        result.push(" ");
+        result.push(arg);
+    }
+
+    result
+}
+
 fn main() -> anyhow::Result<()> {
     let mut stdout = std::io::stdout();
+    let mut stderr = std::io::stderr();
     let mut terminal = Terminal::new(&mut stdout)?;
     let terminal_command = std::env::var("TERMINAL")?;
     let mut ui = Ui::new(&terminal_command);
@@ -570,23 +587,29 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    let mut args = std::env::args().skip(1);
+
+    let Some(cmd) = args.next() else {
+        anyhow::bail!(anyhow::anyhow!("Missing arg"));
+    };
+
+    let mut cmd = std::process::Command::new(cmd);
+    cmd.args(args);
+
     loop {
         ui.draw(&mut terminal)?;
         match ui.update(crossterm::event::read()?) {
             TickResult::Quit => break,
             TickResult::Continue => {}
-            TickResult::Run(entry) => {
-                terminal.exit();
-                anyhow::bail!(entry.exec())
+            TickResult::Run(command) => {
+                drop(terminal);
+                anyhow::bail!(cmd.arg(command_to_string(command)).exec());
             }
-            TickResult::ManualCommand(cmd) => {
-                terminal.exit();
-                anyhow::bail!(std::process::Command::new(terminal_command)
-                    .arg("-e")
-                    .arg("sh")
-                    .arg("-c")
-                    .arg(cmd)
-                    .exec());
+            TickResult::ManualCommand(input) => {
+                drop(terminal);
+                let mut command = std::process::Command::new(&terminal_command);
+                command.arg("-e").arg("sh").arg("-c").arg(input);
+                anyhow::bail!(cmd.arg(command_to_string(&command)).exec());
             }
         }
     }
