@@ -1,0 +1,16 @@
+[package]
+name = "not-bad-launcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+crossterm = "0.28.1"
+freedesktop-desktop-entry = "0.7"
+freedesktop-icons = "0.2"
+image = "0.25"
+kitty_image = "0.1"
+nucleo = "0.5.0"
+resvg = "0.44"
+ropey = "1.6.1"
+rustyline = "15.0.0"
